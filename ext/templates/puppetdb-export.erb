@@ -1,3 +1,0 @@
-#!/bin/bash
-
-<%= @java_bin || "/usr/bin/java"  -%> <%= @java_args || @default_java_args -%> -jar <%= @install_dir || "/usr/share/puppetdb" -%>/puppetdb.jar export "$@"

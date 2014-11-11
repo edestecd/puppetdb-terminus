@@ -6,17 +6,20 @@ require 'puppet/util/puppetdb/char_encoding'
 require 'json'
 
 class Puppet::Util::Puppetdb::Command
+  include Puppet::Util::Puppetdb
   include Puppet::Util::Puppetdb::CommandNames
 
-  Url                = "/v3/commands"
+  CommandsUrl = "/v3/commands"
 
   # Public instance methods
 
-  # Constructor;
+  # Initialize a Command object, for later submission.
   #
   # @param command String the name of the command; should be one of the
   #   constants defined in `Puppet::Util::Puppetdb::CommandNames`
   # @param version Integer the command version number
+  # @param certname The certname that this command operates on (is not
+  #   included in the actual submission)
   # @param payload Object the payload of the command.  This object should be a
   #   primitive (numeric type, string, array, or hash) that is natively supported
   #   by JSON serialization / deserialization libraries.
@@ -24,19 +27,27 @@ class Puppet::Util::Puppetdb::Command
     @command = command
     @version = version
     @certname = certname
-    @payload = self.class.format_payload(command, version, payload)
+    profile "Format payload" do
+      @payload = self.class.format_payload(command, version, payload)
+    end
   end
 
   attr_reader :command, :version, :certname, :payload
 
+  # Submit the command, returning the result hash.
+  #
+  # @return [Hash <String, String>]
   def submit
     checksum = Digest::SHA1.hexdigest(payload)
-    escaped_payload = CGI.escape(payload)
+
     for_whom = " for #{certname}" if certname
 
     begin
-      http = Puppet::Network::HttpPool.http_instance(config.server, config.port)
-      response = http.post(Url, "checksum=#{checksum}&payload=#{escaped_payload}", headers)
+      response = profile "Submit command HTTP post" do
+        http = Puppet::Network::HttpPool.http_instance(config.server, config.port)
+        http.post(Puppet::Util::Puppetdb.url_path(CommandsUrl + "?checksum=#{checksum}"),
+                  payload, headers)
+      end
 
       Puppet::Util::Puppetdb.log_x_deprecation_header(response)
 
@@ -89,7 +100,7 @@ class Puppet::Util::Puppetdb::Command
   def headers
     {
       "Accept" => "application/json",
-      "Content-Type" => "application/x-www-form-urlencoded; charset=UTF-8",
+      "Content-Type" => "application/json",
     }
   end
 
